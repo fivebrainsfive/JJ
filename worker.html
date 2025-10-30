@@ -92,4 +92,166 @@
     const btnLogout = document.getElementById('btn-logout');
     const workerNameEl = document.getElementById('worker-name');
     const filterCategory = document.getElementById('filter-category');
-    const btnAvailable = document.getElementById('btn
+    const btnAvailable = document.getElementById('btn-available');
+
+    const jobModal = document.getElementById('job-modal');
+    const jobClose = document.getElementById('job-close');
+    const jobCancel = document.getElementById('job-cancel');
+    const jobAccept = document.getElementById('job-accept');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+
+    let currentUser = null;
+    let myProfile = null;
+    let chosenJob = null;
+    let unsubAvailable = null;
+    let unsubAccepted = null;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { location.href = 'index.html'; return; }
+      currentUser = user;
+      // fetch profile
+      const usersCol = collection(db, 'users');
+      const q = query(usersCol, where('uid', '==', user.uid));
+      const snap = await (await import('https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js')).getDocs(q);
+      const profileDoc = snap.docs[0];
+      if (!profileDoc) {
+        alert('Profile missing. Please sign in again.');
+        await signOut(auth);
+        location.href = 'index.html';
+        return;
+      }
+      myProfile = profileDoc.data();
+      if (myProfile.role !== 'worker') {
+        alert('Redirecting to client dashboard.');
+        location.href = 'client.html';
+        return;
+      }
+      workerNameEl.textContent = myProfile.name || myProfile.email;
+      startListeners();
+    });
+
+    function startListeners() {
+      if (unsubAvailable) unsubAvailable();
+      if (unsubAccepted) unsubAccepted();
+
+      const jobsCol = collection(db, 'jobs');
+      const availableQ = query(jobsCol, where('status', '==', 'open'), orderBy('createdAt', 'desc'));
+      unsubAvailable = onSnapshot(availableQ, (snap) => {
+        jobsGrid.innerHTML = '';
+        snap.forEach(d => {
+          const j = { id: d.id, ...d.data() };
+          jobsGrid.appendChild(renderJobCard(j));
+        });
+      });
+
+      const myAcceptedQ = query(collection(db, 'jobs'), where('acceptedBy', '==', currentUser.uid), orderBy('createdAt', 'desc'));
+      unsubAccepted = onSnapshot(myAcceptedQ, (snap) => {
+        acceptedList.innerHTML = '';
+        snap.forEach(d => {
+          const j = { id: d.id, ...d.data() };
+          acceptedList.appendChild(renderAcceptedCard(j));
+        });
+      });
+    }
+
+    function renderJobCard(j) {
+      const div = document.createElement('div');
+      div.className = 'bg-white rounded-lg shadow p-4 cursor-pointer';
+      div.innerHTML = `<div class="flex justify-between items-start gap-3">
+          <div>
+            <div class="font-semibold">${escapeHtml(j.title)}</div>
+            <div class="muted text-sm">${escapeHtml(j.category)} • ${escapeHtml(j.location)}</div>
+            <div class="mt-2 muted text-sm">${escapeHtml(j.description).slice(0,200)}</div>
+          </div>
+          <div class="text-sm muted">${j.status || 'open'}</div>
+        </div>`;
+      div.onclick = () => openJobModal(j);
+      return div;
+    }
+
+    function renderAcceptedCard(j) {
+      const div = document.createElement('div');
+      div.className = 'bg-white rounded-lg shadow p-4 flex justify-between items-center';
+      div.innerHTML = `<div>
+          <div class="font-semibold">${escapeHtml(j.title)}</div>
+          <div class="muted text-sm">${escapeHtml(j.location)} • ${escapeHtml(j.category)}</div>
+          <div class="muted text-sm">Client: ${escapeHtml(j.clientId)}</div>
+        </div>`;
+      const actions = document.createElement('div');
+      actions.className = 'flex flex-col gap-2 items-end';
+      if (j.status !== 'completed') {
+        const btnComplete = document.createElement('button');
+        btnComplete.className = 'px-3 py-2 rounded bg-green-600 text-white text-sm';
+        btnComplete.textContent = 'Mark Completed';
+        btnComplete.onclick = async (ev) => {
+          ev.stopPropagation();
+          await updateDoc(doc(db, 'jobs', j.id), { status: 'completed', completedAt: new Date() });
+        };
+        actions.appendChild(btnComplete);
+      } else {
+        const done = document.createElement('div');
+        done.className = 'text-sm bg-green-100 text-green-800 px-3 py-1 rounded';
+        done.textContent = 'Completed';
+        actions.appendChild(done);
+      }
+      div.appendChild(actions);
+      return div;
+    }
+
+    function openJobModal(j) {
+      chosenJob = j;
+      modalTitle.textContent = j.title;
+      modalBody.innerHTML = `<div class="muted text-sm mb-2">${escapeHtml(j.category)} • ${escapeHtml(j.location)}</div>
+                             <div class="mb-2">${escapeHtml(j.description)}</div>
+                             <div class="text-xs muted">Posted: ${new Date(j.createdAt?.toDate?.() || j.createdAt || Date.now()).toLocaleString()}</div>`;
+      jobModal.classList.remove('hidden');
+    }
+
+    jobClose.onclick = () => jobModal.classList.add('hidden');
+    jobCancel.onclick = () => jobModal.classList.add('hidden');
+
+    jobAccept.onclick = async () => {
+      if (!chosenJob) return;
+      // Accept job: set acceptedBy, acceptedName, status -> 'accepted'
+      try {
+        await updateDoc(doc(db, 'jobs', chosenJob.id), {
+          acceptedBy: currentUser.uid,
+          acceptedName: myProfile.name || myProfile.email,
+          status: 'accepted',
+          acceptedAt: new Date()
+        });
+        alert('Job accepted. Please contact the client to coordinate.');
+        jobModal.classList.add('hidden');
+      } catch (e) {
+        console.error(e);
+        alert('Failed to accept job.');
+      }
+    };
+
+    btnLogout.onclick = async () => {
+      await signOut(auth);
+      location.href = 'index.html';
+    };
+
+    btnAvailable.onclick = () => {
+      // filter by selected category
+      const cat = filterCategory.value;
+      if (unsubAvailable) unsubAvailable();
+      const jobsCol = collection(db, 'jobs');
+      let q;
+      if (cat) {
+        q = query(jobsCol, where('status', '==', 'open'), where('category', '==', cat), orderBy('createdAt', 'desc'));
+      } else {
+        q = query(jobsCol, where('status', '==', 'open'), orderBy('createdAt', 'desc'));
+      }
+      unsubAvailable = onSnapshot(q, (snap) => {
+        jobsGrid.innerHTML = '';
+        snap.forEach(d => jobsGrid.appendChild(renderJobCard({ id: d.id, ...d.data() })));
+      });
+    };
+
+    function escapeHtml(s) { return (s||'').toString().replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":\"&#39;\"})[c]); }
+  </script>
+</body>
+</html>
