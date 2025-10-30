@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Job Joint — Connect Clients & Workers</title>
+  <!-- Tailwind CDN for quick styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card { @apply bg-white rounded-2xl shadow-lg p-6; }
+    .muted { color: #6b7280; }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-slate-50 to-slate-100 min-h-screen font-sans">
+  <nav class="max-w-6xl mx-auto p-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-blue-600 text-white flex items-center justify-center rounded">JJ</div>
+      <div>
+        <h1 class="font-bold">Job Joint</h1>
+        <div class="text-xs muted">Connect — Request — Resolve</div>
+      </div>
+    </div>
+    <div class="flex gap-3 items-center">
+      <button id="btn-open-login" class="px-4 py-2 rounded-lg border">Login / Signup</button>
+      <a href="#how" class="text-sm muted">How it works</a>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+    <section class="md:col-span-2 card">
+      <h2 class="text-2xl font-semibold">Find trusted workers near you — fast</h2>
+      <p class="muted mt-2">Post a request and receive offers from nearby verified workers. Rate them after job completion.</p>
+
+      <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg border">
+          <h3 class="font-semibold">For Clients</h3>
+          <p class="muted text-sm">Post a problem, choose a worker, and pay offline or later.</p>
+        </div>
+        <div class="p-4 rounded-lg border">
+          <h3 class="font-semibold">For Workers</h3>
+          <p class="muted text-sm">See jobs in your area, accept, and complete them to get paid.</p>
+        </div>
+      </div>
+
+      <hr class="my-6" />
+
+      <div id="public-jobs" class="grid gap-4"></div>
+    </section>
+
+    <aside class="card">
+      <h3 class="font-semibold">Quick actions</h3>
+      <div class="mt-4 flex flex-col gap-3">
+        <button id="btn-post-job" class="w-full px-4 py-2 rounded-lg bg-blue-600 text-white">Post a Job (Clients)</button>
+        <button id="btn-worker-dashboard" class="w-full px-4 py-2 rounded-lg border">Worker Dashboard</button>
+      </div>
+
+      <div class="mt-6 muted text-sm">Note: This demo uses Firestore and Firebase Auth. Sign up and verify email + phone to access dashboards.</div>
+    </aside>
+  </main>
+
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 w-full max-w-xl">
+      <div class="flex justify-between items-center">
+        <h3 class="font-semibold">Login / Signup</h3>
+        <button id="modal-close" class="text-muted">✕</button>
+      </div>
+
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <h4 class="font-medium">Existing user — Login</h4>
+          <input id="login-email" class="w-full mt-2 p-2 border rounded" placeholder="Email" />
+          <input id="login-password" type="password" class="w-full mt-2 p-2 border rounded" placeholder="Password" />
+          <button id="btn-login" class="mt-3 w-full px-4 py-2 rounded bg-blue-600 text-white">Login</button>
+          <div class="text-xs muted mt-2">After login you'll be asked to verify phone if not already.</div>
+        </div>
+
+        <div>
+          <h4 class="font-medium">New user — Signup</h4>
+          <input id="signup-name" class="w-full mt-2 p-2 border rounded" placeholder="Full name" />
+          <input id="signup-email" class="w-full mt-2 p-2 border rounded" placeholder="Email" />
+          <input id="signup-password" type="password" class="w-full mt-2 p-2 border rounded" placeholder="Password" />
+          <select id="signup-role" class="w-full mt-2 p-2 border rounded">
+            <option value="client">Client (Need help)</option>
+            <option value="worker">Worker (Provide service)</option>
+          </select>
+          <input id="signup-phone" class="w-full mt-2 p-2 border rounded" placeholder="+91xxxxxxxxxx" />
+          <button id="btn-signup" class="mt-3 w-full px-4 py-2 rounded bg-green-600 text-white">Create account</button>
+          <div class="text-xs muted mt-2">We will send email verification + SMS OTP (2-step)</div>
+        </div>
+      </div>
+
+      <div id="recaptcha-container" class="mt-4"></div>
+    </div>
+  </div>
+
+  <div id="post-job-modal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 w-full max-w-lg">
+      <h3 class="font-semibold">Post a Job</h3>
+      <input id="job-title" class="w-full mt-2 p-2 border rounded" placeholder="Short title (e.g., Leaking tap)" />
+      <textarea id="job-desc" class="w-full mt-2 p-2 border rounded" placeholder="Describe the problem"></textarea>
+      <input id="job-location" class="w-full mt-2 p-2 border rounded" placeholder="Location / Pincode" />
+      <select id="job-category" class="w-full mt-2 p-2 border rounded">
+        <option>Plumbing</option>
+        <option>Electrician</option>
+        <option>Carpentry</option>
+        <option>Home Cleaning</option>
+        <option>Other</option>
+      </select>
+      <div class="flex gap-3 mt-4">
+        <button id="btn-submit-job" class="px-4 py-2 rounded bg-blue-600 text-white">Post</button>
+        <button id="btn-cancel-job" class="px-4 py-2 rounded border">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
+    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAWAcXMSOt64SvgCjIS5jB5eebE4aqU1UA",
+      authDomain: "jobjoint-59c4d.firebaseapp.com",
+      projectId: "jobjoint-59c4d",
+      storageBucket: "jobjoint-59c4d.firebasestorage.app",
+      messagingSenderId: "599272153203",
+      appId: "1:599272153203:web:730ec9dfdc8e74fbc98a06",
+      measurementId: "G-JFKMS22GTF"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = (id) => document.getElementById(id);
+
+    const modal = $('modal');
+    $('btn-open-login').onclick = () => modal.classList.remove('hidden');
+    $('modal-close').onclick = () => modal.classList.add('hidden');
+
+    const postModal = $('post-job-modal');
+    $('btn-post-job').onclick = () => postModal.classList.remove('hidden');
+    $('btn-cancel-job').onclick = () => postModal.classList.add('hidden');
+
+    const publicJobsEl = $('public-jobs');
+    const jobsCol = collection(db, 'jobs');
+    const jobsQuery = query(jobsCol, orderBy('createdAt', 'desc'));
+
+    onSnapshot(jobsQuery, (snap) => {
+      publicJobsEl.innerHTML = '';
+      snap.forEach(docSnap => {
+        const j = docSnap.data();
+        const card = document.createElement('div');
+        card.className = 'p-4 border rounded-md bg-white';
+        card.innerHTML = `<div class="flex justify-between"><div><div class="font-semibold">${escapeHtml(j.title)}</div><div class="muted text-sm">${escapeHtml(j.location)} • ${escapeHtml(j.category)}</div></div><div>${j.status || 'open'}</div></div><p class="mt-2">${escapeHtml(j.description)}</p>`;
+        publicJobsEl.appendChild(card);
+      });
+    });
+
+    $('btn-signup').onclick = async () => {
+      const name = $('signup-name').value.trim();
+      const email = $('signup-email').value.trim();
+      const pw = $('signup-password').value;
+      const role = $('signup-role').value;
+      const phone = $('signup-phone').value.trim();
+      if (!email || !pw || !phone) return alert('Provide email, password, and phone');
+
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, email, pw);
+        const user = userCred.user;
+        await addDoc(collection(db, 'users'), { uid: user.uid, name, email, role, phone, createdAt: new Date() });
+        await sendEmailVerification(user);
+        alert('Signup OK — verification email sent. Next you will verify your phone (SMS).');
+
+        window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', { 'size': 'invisible' }, auth);
+        const appVerifier = window.recaptchaVerifier;
+        try {
+          const confirmationResult = await signInWithPhoneNumber(auth, phone, appVerifier);
+          const code = prompt('Enter the 6-digit OTP sent to your phone');
+          if (!code) return alert('Phone verification cancelled');
+          await confirmationResult.confirm(code);
+          alert('Phone verified. You can now login once email is verified.');
+          modal.classList.add('hidden');
+        } catch (err) {
+          console.error('Phone sign-in failed', err);
+          alert('Phone verification failed. You can retry later in profile.');
+        }
+
+      } catch (e) {
+        console.error(e);
+        alert(e.message || 'Signup failed');
+      }
+    };
+
+    $('btn-login').onclick = async () => {
+      const email = $('login-email').value.trim();
+      const pw = $('login-password').value;
+      if (!email || !pw) return alert('Provide email & password');
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email, pw);
+        const user = cred.user;
+        if (!user.emailVerified) {
+          alert('Please verify your email. A verification email was (re)sent.');
+          await sendEmailVerification(user);
+          return;
+        }
+        modal.classList.add('hidden');
+        showDashboardFor(user);
+      } catch (e) {
+        console.error(e);
+        alert(e.message || 'Login failed');
+      }
+    };
+
+    $('btn-submit-job').onclick = async () => {
+      const title = $('job-title').value.trim();
+      const desc = $('job-desc').value.trim();
+      const loc = $('job-location').value.trim();
+      const cat = $('job-category').value;
+      const user = auth.currentUser;
+      if (!user) return alert('You must login as a client to post');
+      try {
+        await addDoc(jobsCol, { title, description: desc, location: loc, category: cat, clientId: user.uid, status: 'open', createdAt: new Date() });
+        alert('Job posted');
+        postModal.classList.add('hidden');
+      } catch (e) { console.error(e); alert('Could not post job'); }
+    };
+
+    function escapeHtml(s) { return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[c]); }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        console.log('User logged in', user.uid);
+        showDashboardFor(user);
+      } else {
+        console.log('No user');
+      }
+    });
+
+    async function showDashboardFor(user) {
+      const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+      const snap = await getDocs(q);
+      const profile = snap.docs[0]?.data();
+      if (!profile) return alert('Profile not found in DB');
+
+      if (profile.role === 'client') {
+        const go = confirm('Open Client dashboard to manage requests?');
+        if (go) window.location.href = '#client-dashboard';
+      } else {
+        const go = confirm('Open Worker dashboard to view nearby requests?');
+        if (go) window.location.href = '#worker-dashboard';
+      }
+    }
+  </script>
+</body>
+</html>
