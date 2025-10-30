@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Job Joint — Client Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <style>
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .muted { color: #6b7280; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <!-- Top navbar -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded bg-blue-600 text-white flex items-center justify-center font-bold">JJ</div>
+        <div>
+          <div class="text-lg font-semibold">Job Joint</div>
+          <div class="text-xs muted">Client Dashboard</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div id="client-name" class="muted text-sm"></div>
+        <button id="btn-logout" class="px-4 py-2 rounded border">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <!-- Sidebar -->
+    <aside class="lg:col-span-1 bg-white rounded-2xl shadow p-6">
+      <div class="font-semibold mb-2">Quick Actions</div>
+      <div class="flex flex-col gap-3">
+        <button id="btn-open-post" class="px-4 py-2 rounded bg-blue-600 text-white">Post New Job</button>
+        <button id="btn-refresh" class="px-4 py-2 rounded border">Refresh</button>
+      </div>
+      <hr class="my-4"/>
+      <div class="text-sm muted">
+        Tips: Add clear location and photos (optional) to get faster responses.
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <section class="lg:col-span-3 space-y-6">
+      <!-- Stats -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <div class="text-xs muted">Open Requests</div>
+          <div id="stat-open" class="text-2xl font-bold mt-2">0</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+          <div class="text-xs muted">Accepted</div>
+          <div id="stat-accepted" class="text-2xl font-bold mt-2">0</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+          <div class="text-xs muted">Completed</div>
+          <div id="stat-completed" class="text-2xl font-bold mt-2">0</div>
+        </div>
+      </div>
+
+      <!-- My requests -->
+      <div>
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-semibold">My Requests</h2>
+          <div class="muted text-sm">Live updates powered by Firestore</div>
+        </div>
+        <div id="requests-list" class="mt-4 grid gap-4"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Post Job Modal -->
+  <div id="post-modal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-2xl p-6">
+      <div class="flex justify-between items-center">
+        <h3 class="text-lg font-semibold">Post New Job</h3>
+        <button id="post-close" class="text-muted">✕</button>
+      </div>
+      <div class="mt-4 grid grid-cols-1 gap-3">
+        <input id="post-title" class="w-full p-3 border rounded" placeholder="Short title (e.g., Leaking tap)" />
+        <textarea id="post-desc" class="w-full p-3 border rounded" rows="4" placeholder="Describe the issue"></textarea>
+        <input id="post-location" class="w-full p-3 border rounded" placeholder="Location / Pincode / Address" />
+        <select id="post-category" class="w-full p-3 border rounded">
+          <option>Plumbing</option>
+          <option>Electrician</option>
+          <option>Carpentry</option>
+          <option>Home Cleaning</option>
+          <option>Other</option>
+        </select>
+        <div class="flex justify-end gap-3">
+          <button id="post-cancel" class="px-4 py-2 rounded border">Cancel</button>
+          <button id="post-submit" class="px-4 py-2 rounded bg-blue-600 text-white">Post Job</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase & App Logic -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
+    import { getAuth, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js';
+    import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, updateDoc, doc } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAWAcXMSOt64SvgCjIS5jB5eebE4aqU1UA",
+      authDomain: "jobjoint-59c4d.firebaseapp.com",
+      projectId: "jobjoint-59c4d",
+      storageBucket: "jobjoint-59c4d.firebasestorage.app",
+      messagingSenderId: "599272153203",
+      appId: "1:599272153203:web:730ec9dfdc8e74fbc98a06",
+      measurementId: "G-JFKMS22GTF"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // UI refs
+    const btnLogout = document.getElementById('btn-logout');
+    const clientNameEl = document.getElementById('client-name');
+    const postModal = document.getElementById('post-modal');
+    const postOpen = document.getElementById('btn-open-post');
+    const postClose = document.getElementById('post-close');
+    const postCancel = document.getElementById('post-cancel');
+    const postSubmit = document.getElementById('post-submit');
+    const requestsList = document.getElementById('requests-list');
+    const statOpen = document.getElementById('stat-open');
+    const statAccepted = document.getElementById('stat-accepted');
+    const statCompleted = document.getElementById('stat-completed');
+    const refreshBtn = document.getElementById('btn-refresh');
+
+    let currentUser = null;
+    let unsub = null;
+
+    // Auth guard & role check
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        location.href = 'index.html';
+        return;
+      }
+      currentUser = user;
+      // fetch user profile to check role
+      const usersCol = collection(db, 'users');
+      const q = query(usersCol, where('uid', '==', user.uid));
+      const snap = await getDocsOnce(q);
+      const profile = snap[0];
+      if (!profile) {
+        alert('User profile not found. Please sign in again.');
+        await signOut(auth);
+        location.href = 'index.html';
+        return;
+      }
+      if (profile.role !== 'client') {
+        // role mismatch - send to correct dashboard
+        alert('Redirecting to worker dashboard.');
+        location.href = 'worker.html';
+        return;
+      }
+      clientNameEl.textContent = profile.name || profile.email;
+      startLiveRequestsListener(user.uid);
+    });
+
+    // Utility to get docs once without creating a listener
+    async function getDocsOnce(q) {
+      const snap = await getFirestoreQuery(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+    async function getFirestoreQuery(q) {
+      return await (await import('https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js')).getDocs(q);
+    }
+
+    // Live listener for this client's jobs
+    function startLiveRequestsListener(uid) {
+      if (unsub) unsub();
+      const jobsCol = collection(db, 'jobs');
+      const q = query(jobsCol, where('clientId', '==', uid), orderBy('createdAt', 'desc'));
+      unsub = onSnapshot(q, (snap) => {
+        const rows = [];
+        let open = 0, accepted = 0, completed = 0;
+        requestsList.innerHTML = '';
+        snap.forEach(docSnap => {
+          const j = { id: docSnap.id, ...docSnap.data() };
+          if (j.status === 'open') open++;
+          if (j.status === 'accepted') accepted++;
+          if (j.status === 'completed') completed++;
+          requestsList.appendChild(renderRequestCard(j));
+        });
+        statOpen.textContent = open;
+        statAccepted.textContent = accepted;
+        statCompleted.textContent = completed;
+      });
+    }
+
+    // Render job card for client
+    function renderRequestCard(j) {
+      const div = document.createElement('div');
+      div.className = 'bg-white rounded-lg shadow p-4 flex flex-col md:flex-row justify-between gap-4';
+      const left = document.createElement('div');
+      left.innerHTML = `<div class="font-semibold">${escapeHtml(j.title)}</div>
+                        <div class="muted text-sm">${escapeHtml(j.category)} • ${escapeHtml(j.location)}</div>
+                        <div class="mt-2">${escapeHtml(j.description)}</div>`;
+      const right = document.createElement('div');
+      right.className = 'flex flex-col gap-2 items-end';
+      const statusBadge = document.createElement('div');
+      statusBadge.className = 'px-3 py-1 rounded-full text-sm';
+      statusBadge.textContent = j.status || 'open';
+      if (j.status === 'open') statusBadge.classList.add('bg-yellow-100','text-yellow-800');
+      if (j.status === 'accepted') statusBadge.classList.add('bg-blue-100','text-blue-800');
+      if (j.status === 'completed') statusBadge.classList.add('bg-green-100','text-green-800');
+
+      right.appendChild(statusBadge);
+      if (j.acceptedBy) {
+        const worker = document.createElement('div');
+        worker.className = 'text-sm muted';
+        worker.innerHTML = `Accepted by: <span class="font-medium">${escapeHtml(j.acceptedName || j.acceptedBy)}</span>`;
+        right.appendChild(worker);
+      }
+      if (j.status === 'accepted') {
+        const btnComplete = document.createElement('button');
+        btnComplete.className = 'px-3 py-2 rounded bg-green-600 text-white text-sm';
+        btnComplete.textContent = 'Mark Completed';
+        btnComplete.onclick = async () => {
+          await updateDoc(doc(db, 'jobs', j.id), { status: 'completed', completedAt: new Date() });
+        };
+        right.appendChild(btnComplete);
+      }
+      div.appendChild(left);
+      div.appendChild(right);
+      return div;
+    }
+
+    // Post job actions
+    postOpen.onclick = () => postModal.classList.remove('hidden');
+    postClose.onclick = () => postModal.classList.add('hidden');
+    postCancel.onclick = () => postModal.classList.add('hidden');
+
+    postSubmit.onclick = async () => {
+      const title = document.getElementById('post-title').value.trim();
+      const description = document.getElementById('post-desc').value.trim();
+      const location = document.getElementById('post-location').value.trim();
+      const category = document.getElementById('post-category').value;
+      if (!title || !description || !location) return alert('Please fill title, description and location.');
+      try {
+        await addDoc(collection(db, 'jobs'), {
+          title, description, location, category,
+          clientId: currentUser.uid,
+          status: 'open',
+          createdAt: new Date()
+        });
+        alert('Job posted successfully.');
+        postModal.classList.add('hidden');
+        // clear fields
+        document.getElementById('post-title').value = '';
+        document.getElementById('post-desc').value = '';
+        document.getElementById('post-location').value = '';
+      } catch (e) {
+        console.error(e);
+        alert('Failed to post job.');
+      }
+    };
+
+    // Logout
+    btnLogout.onclick = async () => {
+      await signOut(auth);
+      location.href = 'index.html';
+    };
+
+    refreshBtn.onclick = () => {
+      if (currentUser) startLiveRequestsListener(currentUser.uid);
+    };
+
+    // small helpers
+    function escapeHtml(s) { return (s||'').toString().replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":\"&#39;\"})[c]); }
+  </script>
+</body>
+</html>
